@@ -69,7 +69,8 @@
 #elif LLVM_VERSION == 90
 #include "llvmheaders_90.h"
 #else
-#error "unsupported LLVM version"
+#pragma(warn "unsupported LLVM version:")
+#undef LLVM_VERSION
 // for OSX code completion
 #define LLVM_VERSION 90
 #include "llvmheaders_90.h"

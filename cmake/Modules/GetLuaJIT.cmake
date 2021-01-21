@@ -24,13 +24,24 @@ elseif(TERRA_LUA STREQUAL "moonjit")
   set(LUAJIT_VERSION_EXTRA -dev)
   set(LUAJIT_COMMIT "eb7168839138591e0d2a1751122966603a8b87c8")
   set(LUAJIT_URL_PREFIX "https://github.com/moonjit/moonjit/archive/")
+elseif(TERRA_LUA STREQUAL "openresty")
+  set(LUAJIT_NAME "LuaJIT")
+  set(LUAJIT_BASE "luajit")
+  set(LUAJIT_VERSION_MAJOR 2)
+  set(LUAJIT_VERSION_MINOR 1)
+  set(LUAJIT_VERSION_PATCH 0)
+  set(LUAJIT_VERSION_EXTRA -beta3)
+  set(LUAJIT_BASENAME "${LUAJIT_NAME}")
+  set(LUAJIT_URL "https://github.com/openresty/luajit2.git")
 else()
   message(FATAL_ERROR "TERRA_LUA must be one of 'luajit', 'moonjit'")
 endif()
 
 if(NOT LUAJIT_VERSION_COMMIT STREQUAL "")
-  set(LUAJIT_BASENAME "${LUAJIT_NAME}-${LUAJIT_COMMIT}")
-  set(LUAJIT_URL "${LUAJIT_URL_PREFIX}/${LUAJIT_COMMIT}.tar.gz")
+  if(NOT TERRA_LUA STREQUAL "openresty")
+     set(LUAJIT_BASENAME "${LUAJIT_NAME}-${LUAJIT_COMMIT}")
+     set(LUAJIT_URL "${LUAJIT_URL_PREFIX}/${LUAJIT_COMMIT}.tar.gz")
+  endif()
 else()
   set(LUAJIT_BASENAME "${LUAJIT_NAME}-${LUAJIT_VERSION_MAJOR}.${LUAJIT_VERSION_MINOR}.${LUAJIT_VERSION_PATCH}${LUAJIT_VERSION_EXTRA}")
   set(LUAJIT_URL "${LUAJIT_URL_PREFIX}/${LUAJIT_BASENAME}.tar.gz")
@@ -62,13 +73,23 @@ string(CONCAT
   "${LUAJIT_LIBRARY_NAME_WE}"
   "${CMAKE_SHARED_LIBRARY_SUFFIX}"
 )
+if(TERRA_LUA STREQUAL "openresty")
+  if (NOT EXISTS ${PROJECT_BINARY_DIR}/${LUAJIT_BASENAME}/.git)
+	  execute_process(
+		  COMMAND git clone --depth=1 ${LUAJIT_URL} ${LUAJIT_BASENAME}
+		  WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+		  )
+  else()
+	  message("${LUAJT_BASENAME} already exists")
+  endif()
+else()
+  file(DOWNLOAD "${LUAJIT_URL}" "${LUAJIT_TAR}")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E tar xzf "${LUAJIT_TAR}"
+    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+  )
+endif()
 
-file(DOWNLOAD "${LUAJIT_URL}" "${LUAJIT_TAR}")
-
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E tar xzf "${LUAJIT_TAR}"
-  WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-)
 
 foreach(LUAJIT_HEADER ${LUAJIT_HEADER_BASENAMES})
   list(APPEND LUAJIT_INSTALL_HEADERS "${LUAJIT_INCLUDE_DIR}/${LUAJIT_HEADER}")
@@ -135,7 +156,8 @@ else()
     DEPENDS ${LUAJIT_SOURCE_DIR}
     # MACOSX_DEPLOYMENT_TARGET is a workaround for https://github.com/LuaJIT/LuaJIT/issues/484
     # see also https://github.com/LuaJIT/LuaJIT/issues/575
-    COMMAND make install "PREFIX=${LUAJIT_INSTALL_PREFIX}" "CC=${CMAKE_C_COMPILER}" "STATIC_CC=${CMAKE_C_COMPILER} -fPIC" XCFLAGS=-DLUAJIT_ENABLE_GC64 MACOSX_DEPLOYMENT_TARGET=10.7
+    COMMAND echo install \"PREFIX=${LUAJIT_INSTALL_PREFIX}\" \"CC=${CMAKE_C_COMPILER}\" \"STATIC_CC=${CMAKE_C_COMPILER} -fPIC\" XCFLAGS=-DLUAJIT_ENABLE_GC64 MACOSX_DEPLOYMENT_TARGET=10.14
+    COMMAND make install "PREFIX=${LUAJIT_INSTALL_PREFIX}" XCFLAGS=-DLUAJIT_ENABLE_GC64 MACOSX_DEPLOYMENT_TARGET=10.14
     WORKING_DIRECTORY ${LUAJIT_SOURCE_DIR}
     VERBATIM
   )
@@ -168,20 +190,27 @@ endforeach()
 if(TERRA_SLIB_INCLUDE_LUAJIT)
   set(LUAJIT_OBJECT_DIR "${PROJECT_BINARY_DIR}/lua_objects")
   file(MAKE_DIRECTORY "${LUAJIT_OBJECT_DIR}")
-
-  # Since we need the list of objects at configure time, best we can do
-  # (without building LuaJIT right this very second) is to guess based
-  # on the source files contained in the release tarball.
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E tar tzf "${LUAJIT_TAR}"
-    OUTPUT_VARIABLE LUAJIT_TAR_CONTENTS
-  )
-
-  string(REGEX MATCHALL
-    "[^/\n]+/src/l[ij][b_][^\n]+[.]c"
-    LUAJIT_SOURCES
-    ${LUAJIT_TAR_CONTENTS}
-  )
+  if (TERRA_LUA STREQUAL openresty )
+	  execute_process(
+		  COMMAND find  "${LUAJIT_INSTALL_PREFIX}" -iname '*.c'
+		  OUTPUT_VARIABLE LUAJIT_TAR_CONTENTS
+		  OUTPUT_STRIP_TRAILING_WHITESPACE
+		  )
+	  set(LUAJIT_SOURCES ${LUAJIT_TAR_CONTENTS})
+  else()
+	  # Since we need the list of objects at configure time, best we can do
+	  # (without building LuaJIT right this very second) is to guess based
+	  # on the source files contained in the release tarball.
+	  execute_process(
+		  COMMAND "${CMAKE_COMMAND}" -E tar tzf "${LUAJIT_TAR}"
+		  OUTPUT_VARIABLE LUAJIT_TAR_CONTENTS
+		  )
+	  string(REGEX MATCHALL
+		  "[^/\n]+/src/l[ij][b_][^\n]+[.]c"
+		  LUAJIT_SOURCES
+		  ${LUAJIT_TAR_CONTENTS}
+		  )
+  endif()
 
   foreach(LUAJIT_SOURCE ${LUAJIT_SOURCES})
     string(REGEX MATCH

@@ -110,12 +110,12 @@ struct DisassembleFunctionListener : public JITEventListener {
 #if !defined(__arm__) && !defined(__linux__) && !defined(__FreeBSD__)
             name = name.substr(1);
 #endif
-            void *addr = (void *)CU->ee->getFunctionAddress(name);
+            void *addr = (void *)CU->ee->getFunctionAddress(name.data());
             if (addr) {
                 assert(addr);
                 TerraFunctionInfo &fi = T->C->functioninfo[addr];
                 fi.ctx = CU->TT->ctx;
-                fi.name = name;
+                fi.name = name.data();
                 fi.addr = addr;
                 fi.size = sz;
             }
@@ -310,7 +310,7 @@ int terra_inittarget(lua_State *L) {
     if (!lua_isnil(L, 2))
         TT->CPU = lua_tostring(L, 2);
     else
-        TT->CPU = llvm::sys::getHostCPUName();
+        TT->CPU = llvm::sys::getHostCPUName().data();
 
     if (!lua_isnil(L, 3))
         TT->Features = lua_tostring(L, 3);
@@ -441,7 +441,7 @@ static void InitializeJIT(TerraCompilationUnit *CU) {
             .setOptLevel(CodeGenOpt::Aggressive);
 #else
             .setOptLevel(CodeGenOpt::Aggressive)
-            .setMCJITMemoryManager(make_unique<TerraSectionMemoryManager>(CU))
+            .setMCJITMemoryManager(std::make_unique<TerraSectionMemoryManager>(CU))
             .setUseOrcMCJITReplacement(true);
 #endif
 
@@ -1054,7 +1054,7 @@ struct CCallingConv {
             Value *addr_dest = B->CreateBitCast(addr_dst, t);
             Value *addr_source = B->CreateBitCast(addr_src, t);
             uint64_t size = 0;
-            unsigned a1 = 0;
+            llvm::Align a1 =(llvm::Align) 0;
             if (t1->isStructTy()) {
                 // size of bytes to copy
                 StructType *st = cast<StructType>(t1);
@@ -1201,7 +1201,7 @@ struct CCallingConv {
         // emit call
         // function pointers are stored as &int8 to avoid calling convension issues
         // cast it back to the real pointer type right before calling it
-        callee = B->CreateBitCast(callee, Ptr(info.fntype));
+        callee = B->CreateBitCast((llvm::FunctionCallee)callee, Ptr(info.fntype));
         CallInst *call = B->CreateCall(callee, arguments);
         // annotate call with byval and sret
         AttributeFnOrCall(call, &info);
@@ -1459,14 +1459,14 @@ struct FunctionEmitter {
                         scc.push_back(f->func);
                         f->onstack = false;
                         VERBOSE_ONLY(T) {
-                            std::string s = f->func->getName();
+                            std::string s = f->func->getName().data();
                             printf("%s%s", s.c_str(), (fstate == f) ? "\n" : " ");
                         }
                     } while (fstate != f);
                     CU->mi->run(scc.begin(), scc.end());
                     for (size_t i = 0; i < scc.size(); i++) {
                         VERBOSE_ONLY(T) {
-                            std::string s = scc[i]->getName();
+                            std::string s = scc[i]->getName().data();
                             printf("optimizing %s\n", s.c_str());
                         }
                         CU->fpm->run(*scc[i]);
@@ -1957,7 +1957,7 @@ struct FunctionEmitter {
             Value *addr_src = l->getOperand(0);
             addr_src = B->CreateBitCast(addr_src, t);
             uint64_t size = 0;
-            unsigned a1 = 0;
+	    llvm::MaybeAlign a1 =(llvm::MaybeAlign) 0;
             if (t1->isStructTy()) {
                 // size of bytes to copy
                 StructType *st = cast<StructType>(t1);
@@ -2327,7 +2327,7 @@ struct FunctionEmitter {
                 LoadInst *l = B->CreateLoad(emitExp(&addr));
                 if (attr.hasfield("alignment")) {
                     int alignment = attr.number("alignment");
-                    l->setAlignment(alignment);
+                    l->setAlignment(Alignment(alignment));
                 }
                 if (attr.boolean("nontemporal")) {
 #if LLVM_VERSION <= 35
@@ -2388,7 +2388,7 @@ struct FunctionEmitter {
         Type *resultType = Type::getInt1Ty(*CU->TT->ctx);
         if (cond->getType()->isVectorTy()) {
             VectorType *vt = cast<VectorType>(cond->getType());
-            resultType = VectorType::get(resultType, vt->getNumElements());
+            resultType = (Type*)vt->getElementType();//VectorType::get(resultType, vt->getNumElements());
         }
         return B->CreateTrunc(cond, resultType);
     }

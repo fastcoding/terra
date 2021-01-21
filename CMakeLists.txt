@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(Terra)
 
+
 list(INSERT CMAKE_MODULE_PATH 0 "${Terra_SOURCE_DIR}/cmake/Modules")
 
 find_package(LLVM HINTS ${LLVM_HINTS} REQUIRED)
@@ -64,7 +65,7 @@ include(BuildDirs)
 include(GetLuaJIT)
 include(ExtractLLVM)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
