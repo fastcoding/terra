@@ -22,6 +22,7 @@ extern "C" {
 #include "llvm/Support/Errc.h"
 #include "llvm/Option/ArgList.h"
 #include "clang/AST/Attr.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Lex/LiteralSupport.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Compilation.h"
@@ -126,13 +127,13 @@ public:
     }
     bool GetRecordTypeFromDecl(RecordDecl *rd, Obj *tt) {
         if (rd->isStruct() || rd->isUnion()) {
-            std::string name = rd->getName();
+            std::string name = rd->getName().str();
             Obj *thenamespace = &tagged;
             if (name == "") {
                 TypedefNameDecl *decl = rd->getTypedefNameForAnonDecl();
                 if (decl) {
                     thenamespace = &general;
-                    name = decl->getName();
+                    name = decl->getName().str();
                 }
             }
             // if name == "" then we have an anonymous struct
@@ -325,7 +326,9 @@ public:
     }
     CStyleCastExpr *CreateCast(QualType Ty, CastKind Kind, Expr *E) {
         TypeSourceInfo *TInfo = Context->getTrivialTypeSourceInfo(Ty, SourceLocation());
-        return CStyleCastExpr::Create(*Context, Ty, VK_RValue, Kind, E, 0, TInfo,
+        return CStyleCastExpr::Create(*Context, Ty, VK_RValue, Kind, E, 0,
+                                      FPOptionsOverride(),
+                                      TInfo,
                                       SourceLocation(), SourceLocation());
     }
     IntegerLiteral *LiteralZero() {
@@ -462,9 +465,9 @@ public:
             InternalName.insert(InternalName.begin(), '\01');
 #endif
 #else
-            std::string label = asmlabel->getLabel();
+            std::string label = asmlabel->getLabel().str();
             if (!((label[0] == '_') && (label.substr(1) == InternalName))) {
-                InternalName = asmlabel->getLabel();
+                InternalName = asmlabel->getLabel().str();
                 InternalName.insert(InternalName.begin(), '\01');
             }
 #endif
@@ -905,8 +908,9 @@ void InitHeaderSearchFlags(std::string const &TripleStr, HeaderSearchOptions &HS
             new DiagnosticsEngine(DiagID, &*DiagOpts, DiagsBuffer));
 
     auto argslist = {"dummy.c", "-target", TripleStr.c_str(), "-resource-dir",
-                     HSO.ResourceDir.c_str()};
-    SmallVector<const char *, 5> Args(argslist.begin(), argslist.end());
+                     HSO.ResourceDir.c_str()
+    };
+    SmallVector<const char *> Args(argslist.begin(), argslist.end());
 
     // Build a dummy compilation to obtain the current toolchain.
     // Indeed, the BuildToolchain function of clang::driver::Driver is private :/
@@ -914,9 +918,9 @@ void InitHeaderSearchFlags(std::string const &TripleStr, HeaderSearchOptions &HS
     std::unique_ptr<driver::Compilation> C(D.BuildCompilation(Args));
 
     clang::driver::ToolChain const &TC = C->getDefaultToolChain();
-    const char *link = TC.GetLinkerPath().c_str();
+    /*const char *link = TC.GetLinkerPath().c_str();
     for (auto &i : TC.getProgramPaths()) link = i.c_str();
-
+    */
     llvm::opt::ArgStringList IncludeArgs;
     TC.AddClangSystemIncludeArgs(C->getArgs(), IncludeArgs);
 
@@ -945,7 +949,8 @@ static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
     // managing the various objects needed to run the compiler.
     TheCompInst->createDiagnostics();
 
-    CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(), argbegin, argend,
+    CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(),
+                                       ArrayRef<const char*>(argbegin, argend),
                                        TheCompInst->getDiagnostics());
     // need to recreate the diagnostics engine so that it actually listens to warning
     // flags like -Wno-deprecated this cannot go before CreateFromArgs
@@ -991,6 +996,7 @@ static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
 
 static void AddMacro(terra_State *T, Preprocessor &PP, const IdentifierInfo *II,
                      MacroDirective *MD, Obj *table) {
+    CompilerInstance TheCompInst;
     if (!II->hasMacroDefinition()) return;
     MacroInfo *MI = MD->getMacroInfo();
     if (MI->isFunctionLike()) return;
@@ -1010,7 +1016,7 @@ static void AddMacro(terra_State *T, Preprocessor &PP, const IdentifierInfo *II,
     SmallString<64> IntegerBuffer;
     bool NumberInvalid = false;
     StringRef Spelling = PP.getSpelling(*Tok, IntegerBuffer, &NumberInvalid);
-    NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP);
+    NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP.getSourceManager(),PP.getLangOpts(),PP.getTargetInfo(),TheCompInst.getDiagnostics());
     if (Literal.hadError) return;
     double V;
     if (Literal.isFloatingLiteral()) {
@@ -1070,8 +1076,9 @@ static int dofile(terra_State *T, TerraTarget *TT, const char *code,
 #else
     llvm::MemoryBuffer *membuffer = llvm::MemoryBuffer::getMemBuffer(code, "<buffer>");
 #endif
-    TheCompInst.getHeaderSearchOpts().ResourceDir = "$CLANG_RESOURCE$";
-    InitHeaderSearchFlags(TT->Triple, TheCompInst.getHeaderSearchOpts());
+    HeaderSearchOptions &hso=TheCompInst.getHeaderSearchOpts();
+    hso.ResourceDir = "$CLANG_RESOURCE$";
+    InitHeaderSearchFlags(TT->Triple, hso);
     initializeclang(T, membuffer, argbegin, argend, &TheCompInst);
 
 #if LLVM_VERSION <= 36

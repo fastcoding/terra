@@ -5,6 +5,7 @@ project(Terra)
 list(INSERT CMAKE_MODULE_PATH 0 "${Terra_SOURCE_DIR}/cmake/Modules")
 
 find_package(LLVM HINTS ${LLVM_HINTS} REQUIRED)
+message(STATUS "LLVM_AVAILABLE_LIBS: ${LLVM_AVAILABLE_LIBS}")
 find_package(Clang REQUIRED)
 find_package(Git) # for version number
 

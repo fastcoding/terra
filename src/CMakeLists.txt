@@ -198,7 +198,7 @@ add_library(TerraLibrary
   STATIC
     $<TARGET_OBJECTS:TerraObjectFiles>
     ${ALL_LLVM_OBJECTS}
-    ${LUAJIT_OBJECTS}
+    ${LUAJIT_OBJECTS_STATIC}
 )
 add_library(TerraLibraryShared
   SHARED
@@ -230,7 +230,7 @@ set_target_properties(TerraLibraryShared PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${
 
 target_link_libraries(TerraLibraryShared
   PRIVATE
-    ${LUAJIT_LIBRARIES}
+  ${LUAJIT_LINK_LIBRARIES}
     ${ALL_LLVM_LIBRARIES}
     ${LLVM_SYSTEM_LIBRARIES}
 )
@@ -305,17 +305,19 @@ target_compile_definitions(TerraExecutable
 )
 
 if(APPLE)
-  set_target_properties(TerraExecutable
-    PROPERTIES
-      # Makes LuaJIT happy (otherwise luaL_newstate returns NULL). Has to be
-      # set as a property otherwise target_link_libraries thinks the arguments
-      # are libraries.
-      LINK_FLAGS "-pagezero_size 10000 -image_base 100000000"
-  )
+	if (NOT ${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "arm64")
+		set_target_properties(TerraExecutable
+			PROPERTIES
+			# Makes LuaJIT happy (otherwise luaL_newstate returns NULL). Has to be
+			# set as a property otherwise target_link_libraries thinks the arguments
+			# are libraries.
+			LINK_FLAGS "-pagezero_size 10000 -image_base 100000000"
+			)
+	endif()
   target_link_libraries(TerraExecutable
     PRIVATE
       -Wl,-force_load,$<TARGET_LINKER_FILE:TerraLibrary>
-      ${LUAJIT_LIBRARIES}
+      ${LUAJIT_LINK_LIBRARIES}
       ${ALL_LLVM_LIBRARIES}
       ${LLVM_SYSTEM_LIBRARIES}
   )

@@ -56,18 +56,26 @@ void ManualInliner::run(std::vector<Function *>::iterator fbegin,
         CallGraphNode *n = CG->getOrInsertFunction(F);
         for (Function::iterator BB = F->begin(), BBE = F->end(); BB != BBE; ++BB)
             for (BasicBlock::iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
+#if LLVM_VERSION < 90
                 CallSite CS(cast<Value>(II));
                 if (CS) {
                     const Function *Callee = CS.getCalledFunction();
                     if (Callee && !Callee->isIntrinsic()) {
                         CallGraphNode *n2 = CG->getOrInsertFunction(Callee);
-#if LLVM_VERSION < 90
                         n->addCalledFunction(CS, n2);
-#else
-                        n->addCalledFunction(cast<CallBase>(II), n2);
-#endif
                     }
                 }
+#else
+                Instruction * inst=&(*II);
+                CallInst *ci=dyn_cast<CallInst>(inst);
+                if (ci){
+                    const Function *Callee = ci->getCalledFunction();
+                    if (Callee && !Callee->isIntrinsic()) {
+                        CallGraphNode *n2 = CG->getOrInsertFunction(Callee);
+                        n->addCalledFunction(cast<CallBase>(II), n2);
+                    }
+                }
+#endif
             }
         nodes.push_back(n);
     }

@@ -23,7 +23,7 @@ extern "C" {
 #if LLVM_VERSION < 50
 #include "llvm/ExecutionEngine/MCJIT.h"
 #else
-#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
+//#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
 #endif
 
 #include "llvm/Support/Atomic.h"
@@ -107,7 +107,7 @@ struct DisassembleFunctionListener : public JITEventListener {
 
     void InitializeDebugData(StringRef name, object::SymbolRef::Type type, uint64_t sz) {
         if (type == object::SymbolRef::ST_Function) {
-#if !defined(__arm__) && !defined(__linux__) && !defined(__FreeBSD__)
+#if !defined(__arm__) && !defined(__arm64__) && !defined(__linux__) && !defined(__FreeBSD__)
             name = name.substr(1);
 #endif
             void *addr = (void *)CU->ee->getFunctionAddress(name.data());
@@ -271,7 +271,7 @@ bool OneTimeInit(struct terra_State *T) {
 #ifdef PRINT_LLVM_TIMING_STATS
         AddLLVMOptions(1, "-time-passes");
 #endif
-#ifndef __arm__
+#if !defined(__arm__) && !defined(__arm64__)
         AddLLVMOptions(1, "-x86-asm-syntax=intel");
 #endif
         InitializeAllTargets();
@@ -342,9 +342,9 @@ int terra_inittarget(lua_State *L) {
     if (lua_toboolean(L, 4)) {  // FloatABIHard boolean
         options.FloatABIType = FloatABI::Hard;
     } else {
-#ifdef __arm__
+#if defined(__arm__)||defined(__arm64__)
         // force hard float since we currently onlly work on platforms that have it
-        options->FloatABIType = FloatABI::Hard;
+        options.FloatABIType = FloatABI::Hard;
 #endif
     }
 
@@ -441,8 +441,8 @@ static void InitializeJIT(TerraCompilationUnit *CU) {
             .setOptLevel(CodeGenOpt::Aggressive);
 #else
             .setOptLevel(CodeGenOpt::Aggressive)
-            .setMCJITMemoryManager(std::make_unique<TerraSectionMemoryManager>(CU))
-            .setUseOrcMCJITReplacement(true);
+    .setMCJITMemoryManager(std::make_unique<TerraSectionMemoryManager>(CU));
+            //.setUseOrcMCJITReplacement(true);
 #endif
 
     CU->ee = eb.create();
@@ -583,7 +583,7 @@ class Types {
                     Type *baseType = ttype->type;
                     t->issigned = ttype->issigned;
                     t->islogical = ttype->islogical;
-                    t->type = VectorType::get(baseType, N);
+                    t->type = VectorType::get(baseType, N,false);
                 } break;
                 case T_primitive: {
                     CreatePrimitiveType(typ, t);
@@ -904,7 +904,7 @@ struct CCallingConv {
                         return (C_SSE_DOUBLE == clz)
                                        ? Type::getDoubleTy(*CU->TT->ctx)
                                        : VectorType::get(Type::getFloatTy(*CU->TT->ctx),
-                                                         2);
+                                                         2,false);
                     default:
                         assert(!"unexpected size for floating point class");
                 }
@@ -1067,7 +1067,7 @@ struct CCallingConv {
                     StoreInst *st = B->CreateStore(src, addr_dst);
                     return st;
                 }
-                a1 = CU->getDataLayout().getABITypeAlignment(t1);
+                a1 = CU->getDataLayout().getABITypeAlign(t1);
             } else
                 assert(!"unhandled type in emitStoreAgg");
             Value *size_v = ConstantInt::get(Type::getInt64Ty(*CU->TT->ctx), size);
@@ -1088,8 +1088,8 @@ struct CCallingConv {
         Classification *info = ClassifyFunction(ftype);
         Function *fn = Function::Create(info->fntype, Function::InternalLinkage, name, M);
         AttributeFnOrCall(fn, info);
-#if LLVM_VERSION > 32 && defined(__arm__)
-        fn->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
+#if LLVM_VERSION > 32 && (defined(__arm__) || defined(__arm64__))
+        fn->addAttribute(llvm::AttributeList::FunctionIndex, llvm::Attribute::NoUnwind);
 #endif
 #if LLVM_VERSION >= 37
         DEBUG_ONLY(T) { fn->addFnAttr("no-frame-pointer-elim", "true"); }
@@ -1201,8 +1201,8 @@ struct CCallingConv {
         // emit call
         // function pointers are stored as &int8 to avoid calling convension issues
         // cast it back to the real pointer type right before calling it
-        callee = B->CreateBitCast((llvm::FunctionCallee)callee, Ptr(info.fntype));
-        CallInst *call = B->CreateCall(callee, arguments);
+        callee = B->CreateBitCast(/*(llvm::FunctionCallee)*/callee, Ptr(info.fntype));
+        CallInst *call = B->CreateCall(info.fntype,callee, arguments);
         // annotate call with byval and sret
         AttributeFnOrCall(call, &info);
 
@@ -1957,22 +1957,22 @@ struct FunctionEmitter {
             Value *addr_src = l->getOperand(0);
             addr_src = B->CreateBitCast(addr_src, t);
             uint64_t size = 0;
-	    llvm::MaybeAlign a1 =(llvm::MaybeAlign) 0;
+            llvm::MaybeAlign a1(0);
             if (t1->isStructTy()) {
                 // size of bytes to copy
                 StructType *st = cast<StructType>(t1);
                 const StructLayout *sl = CU->getDataLayout().getStructLayout(st);
                 size = sl->getSizeInBytes();
-                a1 = hasAlignment ? alignment : sl->getAlignment();
+                a1 = hasAlignment ? MaybeAlign(alignment) : sl->getAlignment();
             } else if (t1->isArrayTy() && (CU->getDataLayout().getTypeAllocSize(t1) >=
                                            MEM_ARRAY_THRESHOLD)) {
                 size = CU->getDataLayout().getTypeAllocSize(t1);
-                a1 = hasAlignment ? alignment
-                                  : CU->getDataLayout().getABITypeAlignment(t1);
+                a1 = MaybeAlign(hasAlignment ? alignment
+                                  : CU->getDataLayout().getABITypeAlignment(t1));
             } else {
                 StoreInst *st = B->CreateStore(value, addr);
                 if (isVolatile) st->setVolatile(true);
-                if (hasAlignment) st->setAlignment(alignment);
+                if (hasAlignment) st->setAlignment(Align(alignment));
                 return st;
             }
             Value *size_v = ConstantInt::get(Type::getInt64Ty(*CU->TT->ctx), size);
@@ -1980,14 +1980,14 @@ struct FunctionEmitter {
 #if LLVM_VERSION <= 60
             Value *m = B->CreateMemCpy(addr_dst, addr_src, size_v, a1, isVolatile);
 #else
-            Value *m = B->CreateMemCpy(addr_dst, a1, addr_src, l->getAlignment(), size_v,
+            Value *m = B->CreateMemCpy(addr_dst, a1, addr_src, MaybeAlign(l->getAlignment()), size_v,
                                        isVolatile);
 #endif
             return m;
         } else {
             StoreInst *st = B->CreateStore(value, addr);
             if (isVolatile) st->setVolatile(true);
-            if (hasAlignment) st->setAlignment(alignment);
+            if (hasAlignment) st->setAlignment(Align(alignment));
             return st;
         }
     }
@@ -2312,10 +2312,11 @@ struct FunctionEmitter {
                 std::vector<Type *> ptypes;
                 for (size_t i = 0; i < values.size(); i++)
                     ptypes.push_back(values[i]->getType());
-                Value *fn = InlineAsm::get(FunctionType::get(rtype, ptypes, false),
+                FunctionType *ft=FunctionType::get(rtype, ptypes, false);
+                Value *fn = InlineAsm::get(ft,
                                            exp->string("asm"), exp->string("constraints"),
                                            exp->boolean("volatile"));
-                Value *call = B->CreateCall(fn, values);
+                Value *call = B->CreateCall(ft,fn, values);
                 return (isvoid) ? UndefValue::get(ttype) : call;
             } break;
             case T_attrload: {
@@ -2327,7 +2328,7 @@ struct FunctionEmitter {
                 LoadInst *l = B->CreateLoad(emitExp(&addr));
                 if (attr.hasfield("alignment")) {
                     int alignment = attr.number("alignment");
-                    l->setAlignment(Alignment(alignment));
+                    l->setAlignment(Align(alignment));
                 }
                 if (attr.boolean("nontemporal")) {
 #if LLVM_VERSION <= 35
@@ -2519,9 +2520,10 @@ struct FunctionEmitter {
         DEBUG_ONLY(T) {
             MDNode *scope = debugScopeForFile(customfilename ? customfilename
                                                              : obj->string("filename"));
-            B->SetCurrentDebugLocation(DebugLoc::get(
+            DebugLoc loc(scope);
+            B->SetCurrentDebugLocation(loc); /*(DebugLoc::get(
                     customfilename ? customlinenumber : obj->number("linenumber"), 0,
-                    scope));
+                    scope));*/
         }
     }
 
@@ -3014,9 +3016,9 @@ static int terra_llvmsizeof(lua_State *L) {
 #ifdef TERRA_CAN_USE_MCJIT
 static void *GetGlobalValueAddress(TerraCompilationUnit *CU, StringRef Name) {
     if (CU->T->options.debug > 1)
-        return sys::DynamicLibrary::SearchForAddressOfSymbol(Name);
+        return sys::DynamicLibrary::SearchForAddressOfSymbol(Name.str().c_str());
 
-    return (void *)CU->ee->getGlobalValueAddress(Name);
+    return (void *)CU->ee->getGlobalValueAddress(Name.str().c_str());
 }
 static bool MCJITShouldCopy(GlobalValue *G, void *data) {
     TerraCompilationUnit *CU = (TerraCompilationUnit *)data;
@@ -3054,12 +3056,12 @@ static void *JITGlobalValue(TerraCompilationUnit *CU, GlobalValue *gv) {
             llvmutil_createtemporaryfile("terra", "so", tmpname);
             if (SaveSharedObject(CU, m, NULL, tmpname.c_str())) lua_error(CU->T->L);
             sys::DynamicLibrary::LoadLibraryPermanently(tmpname.c_str());
-            void *result = sys::DynamicLibrary::SearchForAddressOfSymbol(gv->getName());
+            void *result = sys::DynamicLibrary::SearchForAddressOfSymbol(gv->getName().str().c_str());
             assert(result);
             return result;
         }
         ee->addModule(UNIQUEIFY(Module, m));
-        return (void *)ee->getGlobalValueAddress(gv->getName());
+        return (void *)ee->getGlobalValueAddress(gv->getName().str().c_str());
 #else
         return NULL;
 #endif

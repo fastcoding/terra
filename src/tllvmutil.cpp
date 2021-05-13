@@ -96,12 +96,12 @@ void llvmutil_disassemblefunction(void *data, size_t numBytes, size_t numInst) {
     InitializeNativeTargetDisassembler();
     std::string Error;
     std::string TripleName = llvm::sys::getProcessTriple();
-    std::string CPU = llvm::sys::getHostCPUName();
+    std::string CPU = llvm::sys::getHostCPUName().str();
 
     const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, Error);
     assert(TheTarget && "Unable to create target!");
     const MCAsmInfo *MAI = TheTarget->createMCAsmInfo(
-            *TheTarget->createMCRegInfo(TripleName), TripleName);
+            *TheTarget->createMCRegInfo(TripleName), StringRef(TripleName),MCTargetOptions());
     assert(MAI && "Unable to create target asm info!");
     const MCInstrInfo *MII = TheTarget->createMCInstrInfo();
     assert(MII && "Unable to create target instruction info!");
@@ -144,7 +144,7 @@ void llvmutil_disassemblefunction(void *data, size_t numBytes, size_t numInst) {
         MCInst Inst;
 #if LLVM_VERSION >= 36
         MCDisassembler::DecodeStatus S = DisAsm->getInstruction(
-                Inst, Size, Bytes.slice(b), addr + b, nulls(), Out);
+                Inst, Size, Bytes.slice(b), addr + b, Out);
 #else
         MCDisassembler::DecodeStatus S =
                 DisAsm->getInstruction(Inst, Size, SMO, addr + b, nulls(), Out);
@@ -152,11 +152,12 @@ void llvmutil_disassemblefunction(void *data, size_t numBytes, size_t numInst) {
         if (MCDisassembler::Fail == S || MCDisassembler::SoftFail == S) break;
         Out << (void *)((uintptr_t)data + b) << "(+" << b << ")"
             << ":\t";
-        IP->printInst(&Inst, Out, ""
-#if LLVM_VERSION >= 37
+        IP->printInst(&Inst, ((uintptr_t)data + b), ""
+//#if LLVM_VERSION >= 37
                       ,
                       *STI
-#endif
+//#endif
+                      , Out
         );
         Out << "\n";
     }
@@ -175,9 +176,9 @@ bool llvmutil_emitobjfile(Module *Mod, TargetMachine *TM, bool outputobjectfile,
     PassManagerT pass;
     llvmutil_addtargetspecificpasses(&pass, TM);
 
-    TargetMachine::CodeGenFileType ft = outputobjectfile
-                                                ? TargetMachine::CGFT_ObjectFile
-                                                : TargetMachine::CGFT_AssemblyFile;
+    CodeGenFileType ft = outputobjectfile
+                                                ? CGFT_ObjectFile
+                                                : CGFT_AssemblyFile;
 
 #if LLVM_VERSION <= 36
     formatted_raw_ostream destf(dest);

@@ -110,7 +110,6 @@ else()
   # Don't extract individual object files.
   list(APPEND ALL_LLVM_OBJECTS)
 endif()
-
 add_custom_target(
   LLVMObjectFiles
   DEPENDS ${ALL_LLVM_OBJECTS}
