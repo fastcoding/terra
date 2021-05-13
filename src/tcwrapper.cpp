@@ -27,6 +27,9 @@ extern "C" {
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/ToolChain.h"
+#if LLVM_VERSION >= 100
+#include "clang/Basic/Builtins.h"
+#endif
 #include "tcompilerstate.h"
 
 using namespace clang;
@@ -349,7 +352,7 @@ public:
     }
     bool VisitTypedefDecl(TypedefDecl *TD) {
         bool isCanonical = (TD == TD->getCanonicalDecl());
-#if LLVM_VERSION >= 36 && defined(_WIN32)
+#if defined(_WIN32)
         // Starting with LLVM 3.6, clang initializes "size_t" as an implicit declaration
         // when being compatible with MSVC.
         if (!isCanonical && TD->getName().str() == "size_t") {
@@ -404,13 +407,8 @@ public:
         // foo() and not void foo(void)) we don't support old-style C parameter lists, we
         // just treat them as empty
         if (proto) {
-#if LLVM_VERSION >= 35
             for (size_t i = 0; i < proto->getNumParams(); i++) {
                 QualType PT = proto->getParamType(i);
-#else
-            for (size_t i = 0; i < proto->getNumArgs(); i++) {
-                QualType PT = proto->getArgType(i);
-#endif
                 Obj pt;
                 if (!GetType(PT, &pt)) {
                     valid = false;  // keep going with attempting to parse type to make
@@ -459,7 +457,7 @@ public:
         AsmLabelAttr *asmlabel = f->getAttr<AsmLabelAttr>();
         if (asmlabel) {
 #if !((LLVM_VERSION > 50) && __APPLE__)
-            InternalName = asmlabel->getLabel();
+            InternalName = asmlabel->getLabel().str();
 #if !defined(__linux__) && !defined(__FreeBSD__)
             // In OSX and Windows LLVM mangles assembler labels by adding a '\01' prefix
             InternalName.insert(InternalName.begin(), '\01');
@@ -606,13 +604,7 @@ public:
     virtual void HandleCXXStaticMemberVarInstantiation(VarDecl *D) {
         CG->HandleCXXStaticMemberVarInstantiation(D);
     }
-#if LLVM_VERSION >= 37
     virtual void HandleVTable(CXXRecordDecl *RD) { CG->HandleVTable(RD); }
-#else
-    virtual void HandleVTable(CXXRecordDecl *RD, bool DefinitionRequired) {
-        CG->HandleVTable(RD, DefinitionRequired);
-    }
-#endif
     virtual ASTMutationListener *GetASTMutationListener() {
         return CG->GetASTMutationListener();
     }
@@ -660,37 +652,17 @@ public:
             : Name(Name_), Status(Status_), Buffer(Buffer_) {}
     virtual ~LuaProvidedFile() override {}
     virtual llvm::ErrorOr<clang::vfs::Status> status() override { return Status; }
-#if LLVM_VERSION >= 36
     virtual llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(
             const Twine &Name, int64_t FileSize, bool RequiresNullTerminator,
             bool IsVolatile) override {
         return llvm::MemoryBuffer::getMemBuffer(Buffer, "", RequiresNullTerminator);
     }
-#else
-    virtual std::error_code getBuffer(const Twine &Name,
-                                      std::unique_ptr<llvm::MemoryBuffer> &Result,
-                                      int64_t FileSize, bool RequiresNullTerminator,
-                                      bool IsVolatile) override {
-        Result.reset(
-                llvm::MemoryBuffer::getMemBuffer(Buffer, "", RequiresNullTerminator));
-        return std::error_code();
-    }
-#endif
     virtual std::error_code close() override { return std::error_code(); }
-#if LLVM_VERSION <= 37
-    virtual void setName(StringRef Name_) override { Name = Name_; }
-#endif
 };
 #endif
 
 #if LLVM_VERSION < 50
-static llvm::sys::TimeValue ZeroTime() {
-#if LLVM_VERSION >= 36
-    return llvm::sys::TimeValue::ZeroTime();
-#else
-    return llvm::sys::TimeValue::ZeroTime;
-#endif
-}
+static llvm::sys::TimeValue ZeroTime() { return llvm::sys::TimeValue::ZeroTime(); }
 #else
 static llvm::sys::TimePoint<> ZeroTime() {
     return llvm::sys::TimePoint<>(std::chrono::nanoseconds::zero());
@@ -826,12 +798,9 @@ public:
             *contents = StringRef(data, size);
             lua_pop(L, 2);  // pop contents, size
         }
-        *status = clang::vfs::Status(Path.str(),
-#if LLVM_VERSION <= 37
-                                     "",
-#endif
-                                     clang::vfs::getNextVirtualUniqueID(), ZeroTime(), 0,
-                                     0, size, filetype, llvm::sys::fs::all_all);
+        *status = clang::vfs::Status(Path.str(), clang::vfs::getNextVirtualUniqueID(),
+                                     ZeroTime(), 0, 0, size, filetype,
+                                     llvm::sys::fs::all_all);
         lua_pop(L, 2);  // pop table, kind
         return true;
     }
@@ -849,20 +818,6 @@ public:
         }
         return llvm::errc::no_such_file_or_directory;
     }
-#if LLVM_VERSION <= 35
-    virtual std::error_code openFileForRead(
-            const llvm::Twine &Path, std::unique_ptr<clang::vfs::File> &Result) override {
-        std::error_code ec = RFS->openFileForRead(Path, Result);
-        if (!ec || ec != llvm::errc::no_such_file_or_directory) return ec;
-        clang::vfs::Status Status;
-        StringRef Buffer;
-        if (GetFile(Path, &Status, &Buffer)) {
-            Result.reset(new LuaProvidedFile(Path.str(), Status, Buffer));
-            return std::error_code();
-        }
-        return llvm::errc::no_such_file_or_directory;
-    }
-#else
     virtual llvm::ErrorOr<std::unique_ptr<clang::vfs::File>> openFileForRead(
             const llvm::Twine &Path) override {
         llvm::ErrorOr<std::unique_ptr<clang::vfs::File>> ec = RFS->openFileForRead(Path);
@@ -875,7 +830,6 @@ public:
         }
         return llvm::errc::no_such_file_or_directory;
     }
-#endif
     virtual clang::vfs::directory_iterator dir_begin(const llvm::Twine &Dir,
                                                      std::error_code &EC) override {
         printf("BUGBUG: unexpected call to directory iterator in C header include. "
@@ -887,14 +841,12 @@ public:
                                                                   // until this changes.
         return RFS->dir_begin(Dir, EC);
     }
-#if LLVM_VERSION >= 38
     llvm::ErrorOr<std::string> getCurrentWorkingDirectory() const override {
         return std::string("cwd");
     }
     std::error_code setCurrentWorkingDirectory(const Twine &Path) override {
         return std::error_code();
     }
-#endif
 };
 #endif
 
@@ -918,15 +870,14 @@ void InitHeaderSearchFlags(std::string const &TripleStr, HeaderSearchOptions &HS
     std::unique_ptr<driver::Compilation> C(D.BuildCompilation(Args));
 
     clang::driver::ToolChain const &TC = C->getDefaultToolChain();
-    /*const char *link = TC.GetLinkerPath().c_str();
+/*    std::string path = TC.GetLinkerPath();
+    const char *link = path.c_str();
     for (auto &i : TC.getProgramPaths()) link = i.c_str();
     */
     llvm::opt::ArgStringList IncludeArgs;
     TC.AddClangSystemIncludeArgs(C->getArgs(), IncludeArgs);
 
-#if LLVM_VERSION > 37
     TC.AddCudaIncludeArgs(C->getArgs(), IncludeArgs);
-#endif
 
     // organized in pairs "-<flag> <directory>"
     assert(((IncludeArgs.size() & 1) == 0) && "even number of IncludeArgs");
@@ -943,15 +894,24 @@ void InitHeaderSearchFlags(std::string const &TripleStr, HeaderSearchOptions &HS
 }
 
 static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
-                            const char **argbegin, const char **argend,
+                            const std::vector<const char *> &args,
                             CompilerInstance *TheCompInst) {
     // CompilerInstance will hold the instance of the Clang compiler for us,
     // managing the various objects needed to run the compiler.
     TheCompInst->createDiagnostics();
 
+<<<<<<< HEAD
     CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(),
                                        ArrayRef<const char*>(argbegin, argend),
+=======
+#if LLVM_VERSION <= 90
+    CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(), &args[0],
+                                       &args[args.size()], TheCompInst->getDiagnostics());
+#else
+    CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(), args,
+>>>>>>> master
                                        TheCompInst->getDiagnostics());
+#endif
     // need to recreate the diagnostics engine so that it actually listens to warning
     // flags like -Wno-deprecated this cannot go before CreateFromArgs
     TheCompInst->createDiagnostics();
@@ -974,11 +934,7 @@ static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
     FileManager &FileMgr = TheCompInst->getFileManager();
     TheCompInst->createSourceManager(FileMgr);
     SourceManager &SourceMgr = TheCompInst->getSourceManager();
-    TheCompInst->createPreprocessor(
-#if LLVM_VERSION >= 35
-            TU_Complete
-#endif
-    );
+    TheCompInst->createPreprocessor(TU_Complete);
     TheCompInst->createASTContext();
 
     // Set the main file handled by the source manager to the input file.
@@ -987,11 +943,7 @@ static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
     TheCompInst->getDiagnosticClient().BeginSourceFile(TheCompInst->getLangOpts(),
                                                        &TheCompInst->getPreprocessor());
     Preprocessor &PP = TheCompInst->getPreprocessor();
-#if LLVM_VERSION <= 37
-    PP.getBuiltinInfo().InitializeBuiltins(PP.getIdentifierTable(), PP.getLangOpts());
-#else
     PP.getBuiltinInfo().initializeBuiltins(PP.getIdentifierTable(), PP.getLangOpts());
-#endif
 }
 
 static void AddMacro(terra_State *T, Preprocessor &PP, const IdentifierInfo *II,
@@ -1016,7 +968,17 @@ static void AddMacro(terra_State *T, Preprocessor &PP, const IdentifierInfo *II,
     SmallString<64> IntegerBuffer;
     bool NumberInvalid = false;
     StringRef Spelling = PP.getSpelling(*Tok, IntegerBuffer, &NumberInvalid);
+<<<<<<< HEAD
     NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP.getSourceManager(),PP.getLangOpts(),PP.getTargetInfo(),TheCompInst.getDiagnostics());
+=======
+#if LLVM_VERSION <= 100
+    NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP);
+#else
+    NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP.getSourceManager(),
+                                 PP.getLangOpts(), PP.getTargetInfo(),
+                                 PP.getDiagnostics());
+#endif
+>>>>>>> master
     if (Literal.hadError) return;
     double V;
     if (Literal.isFloatingLiteral()) {
@@ -1065,14 +1027,14 @@ static void optimizemodule(TerraTarget *TT, llvm::Module *M) {
     opt.run(*M);
 }
 static int dofile(terra_State *T, TerraTarget *TT, const char *code,
-                  const char **argbegin, const char **argend, Obj *result) {
+                  const std::vector<const char *> &args, Obj *result) {
     // CompilerInstance will hold the instance of the Clang compiler for us,
     // managing the various objects needed to run the compiler.
     CompilerInstance TheCompInst;
 
-#if LLVM_VERSION >= 36
     llvm::MemoryBuffer *membuffer =
             llvm::MemoryBuffer::getMemBuffer(code, "<buffer>").release();
+<<<<<<< HEAD
 #else
     llvm::MemoryBuffer *membuffer = llvm::MemoryBuffer::getMemBuffer(code, "<buffer>");
 #endif
@@ -1080,29 +1042,23 @@ static int dofile(terra_State *T, TerraTarget *TT, const char *code,
     hso.ResourceDir = "$CLANG_RESOURCE$";
     InitHeaderSearchFlags(TT->Triple, hso);
     initializeclang(T, membuffer, argbegin, argend, &TheCompInst);
+=======
+    TheCompInst.getHeaderSearchOpts().ResourceDir = "$CLANG_RESOURCE$";
+    InitHeaderSearchFlags(TT->Triple, TheCompInst.getHeaderSearchOpts());
+    initializeclang(T, membuffer, args, &TheCompInst);
+>>>>>>> master
 
-#if LLVM_VERSION <= 36
-    CodeGenerator *codegen = CreateLLVMCodeGen(TheCompInst.getDiagnostics(), "mymodule",
-                                               TheCompInst.getCodeGenOpts(),
-                                               TheCompInst.getTargetOpts(), *TT->ctx);
-#else
     CodeGenerator *codegen = CreateLLVMCodeGen(
             TheCompInst.getDiagnostics(), "mymodule", TheCompInst.getHeaderSearchOpts(),
             TheCompInst.getPreprocessorOpts(), TheCompInst.getCodeGenOpts(), *TT->ctx);
-#endif
 
     std::stringstream ss;
     ss << "__makeeverythinginclanglive_";
     ss << TT->next_unused_id++;
     std::string livenessfunction = ss.str();
 
-#if LLVM_VERSION < 37
-    // CodeGenProxy codegenproxy(codegen,result,livenessfunction);
-    TheCompInst.setASTConsumer(new CodeGenProxy(codegen, result, TT, livenessfunction));
-#else
     TheCompInst.setASTConsumer(std::unique_ptr<ASTConsumer>(
             new CodeGenProxy(codegen, result, TT, livenessfunction)));
-#endif
 
     TheCompInst.createSema(clang::TU_Complete, NULL);
 
@@ -1120,11 +1076,7 @@ static int dofile(terra_State *T, TerraTarget *TT, const char *code,
                                       end = PP.macro_end(false);
          it != end; ++it) {
         const IdentifierInfo *II = it->first;
-#if LLVM_VERSION <= 36
-        MacroDirective *MD = it->second;
-#else
         MacroDirective *MD = it->second.getLatest();
-#endif
         AddMacro(T, PP, II, MD, &macros);
     }
 
@@ -1194,7 +1146,7 @@ int include_c(lua_State *L) {
         lua_pushvalue(L, -2);
         result.initFromStack(L, ref_table);
 
-        dofile(T, TT, code, &args.data()[0], &args.data()[args.size()], &result);
+        dofile(T, TT, code, args, &result);
     }
 
     lobj_removereftable(L, ref_table);
