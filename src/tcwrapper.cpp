@@ -900,16 +900,11 @@ static void initializeclang(terra_State *T, llvm::MemoryBuffer *membuffer,
     // managing the various objects needed to run the compiler.
     TheCompInst->createDiagnostics();
 
-<<<<<<< HEAD
-    CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(),
-                                       ArrayRef<const char*>(argbegin, argend),
-=======
 #if LLVM_VERSION <= 90
     CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(), &args[0],
                                        &args[args.size()], TheCompInst->getDiagnostics());
 #else
     CompilerInvocation::CreateFromArgs(TheCompInst->getInvocation(), args,
->>>>>>> master
                                        TheCompInst->getDiagnostics());
 #endif
     // need to recreate the diagnostics engine so that it actually listens to warning
@@ -968,17 +963,14 @@ static void AddMacro(terra_State *T, Preprocessor &PP, const IdentifierInfo *II,
     SmallString<64> IntegerBuffer;
     bool NumberInvalid = false;
     StringRef Spelling = PP.getSpelling(*Tok, IntegerBuffer, &NumberInvalid);
-<<<<<<< HEAD
-    NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP.getSourceManager(),PP.getLangOpts(),PP.getTargetInfo(),TheCompInst.getDiagnostics());
-=======
-#if LLVM_VERSION <= 100
+
+#if LLVM_VERSION < 120
     NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP);
 #else
     NumericLiteralParser Literal(Spelling, Tok->getLocation(), PP.getSourceManager(),
                                  PP.getLangOpts(), PP.getTargetInfo(),
                                  PP.getDiagnostics());
 #endif
->>>>>>> master
     if (Literal.hadError) return;
     double V;
     if (Literal.isFloatingLiteral()) {
@@ -1034,19 +1026,10 @@ static int dofile(terra_State *T, TerraTarget *TT, const char *code,
 
     llvm::MemoryBuffer *membuffer =
             llvm::MemoryBuffer::getMemBuffer(code, "<buffer>").release();
-<<<<<<< HEAD
-#else
-    llvm::MemoryBuffer *membuffer = llvm::MemoryBuffer::getMemBuffer(code, "<buffer>");
-#endif
-    HeaderSearchOptions &hso=TheCompInst.getHeaderSearchOpts();
-    hso.ResourceDir = "$CLANG_RESOURCE$";
-    InitHeaderSearchFlags(TT->Triple, hso);
-    initializeclang(T, membuffer, argbegin, argend, &TheCompInst);
-=======
+
     TheCompInst.getHeaderSearchOpts().ResourceDir = "$CLANG_RESOURCE$";
     InitHeaderSearchFlags(TT->Triple, TheCompInst.getHeaderSearchOpts());
     initializeclang(T, membuffer, args, &TheCompInst);
->>>>>>> master
 
     CodeGenerator *codegen = CreateLLVMCodeGen(
             TheCompInst.getDiagnostics(), "mymodule", TheCompInst.getHeaderSearchOpts(),

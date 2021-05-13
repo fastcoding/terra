@@ -44,6 +44,7 @@ void ManualInliner::run(std::vector<Function *>::iterator fbegin,
         CallGraphNode *n = CG->getOrInsertFunction(F);
         for (Function::iterator BB = F->begin(), BBE = F->end(); BB != BBE; ++BB)
             for (BasicBlock::iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
+#if LLVM_VERSION <120
 #if LLVM_VERSION < 90
                 CallSite CS(cast<Value>(II));
 #else

@@ -1925,7 +1925,7 @@ struct FunctionEmitter {
 #if LLVM_VERSION <= 90
                 if (hasAlignment) st->setAlignment(alignment);
 #elif LLVM_VERSION <= 100
-                if (hasAlignment) st->setAlignment(MaybeAlign(alignment));
+                if (hasAlignment) st->setAlignment(Align(alignment));
 #else
                 if (hasAlignment) st->setAlignment(Align(alignment));
 #endif
@@ -1949,7 +1949,7 @@ struct FunctionEmitter {
 #if LLVM_VERSION <= 90
             if (hasAlignment) st->setAlignment(alignment);
 #elif LLVM_VERSION <= 100
-            if (hasAlignment) st->setAlignment(MaybeAlign(alignment));
+            if (hasAlignment) st->setAlignment(Align(alignment));
 #else
             if (hasAlignment) st->setAlignment(Align(alignment));
 #endif
@@ -2295,7 +2295,7 @@ struct FunctionEmitter {
 #if LLVM_VERSION <= 90
                     l->setAlignment(alignment);
 #elif LLVM_VERSION <= 100
-                    l->setAlignment(MaybeAlign(alignment));
+                    l->setAlignment(Align(alignment));
 #else
                     l->setAlignment(Align(alignment));
 #endif

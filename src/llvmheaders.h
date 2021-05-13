@@ -66,8 +66,8 @@
 #pragma(warn "unsupported LLVM version:")
 //#undef LLVM_VERSION
 // for OSX code completion
-#define LLVM_VERSION 100
-#include "llvmheaders_100.h"
+#define LLVM_VERSION 120
+#include "llvmheaders_110.h"
 #endif
 
 #define UNIQUEIFY(T, x) (std::unique_ptr<T>(x))
