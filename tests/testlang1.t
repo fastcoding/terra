@@ -12,7 +12,7 @@ image bar 3
 print(bar,bar1)
 
 local image what 4 3
-print(what)
+print('what:',what)
 local a = 4
 local b = 5
 c = 6

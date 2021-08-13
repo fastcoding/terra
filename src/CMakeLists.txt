@@ -200,6 +200,7 @@ add_library(TerraLibrary
     ${ALL_LLVM_OBJECTS}
     ${LUAJIT_OBJECTS_STATIC}
 )
+
 add_library(TerraLibraryShared
   SHARED
     $<TARGET_OBJECTS:TerraObjectFiles>
@@ -220,6 +221,7 @@ add_dependencies(TerraLibrary LLVMObjectFiles)
 add_dependencies(TerraLibraryShared LuaJIT)
 add_dependencies(TerraLibraryShared LLVMObjectFiles)
 
+set_target_properties(TerraLibrary PROPERTIES PREFIX "")
 set_target_properties(TerraLibraryShared PROPERTIES PREFIX "")
 
 set_target_properties(TerraLibrary PROPERTIES OUTPUT_NAME terra_s)
@@ -316,9 +318,11 @@ if(APPLE)
 	endif()
   target_link_libraries(TerraExecutable
     PRIVATE
-      -Wl,-force_load,$<TARGET_LINKER_FILE:TerraLibrary>
+      #-Wl,-force_load,$<TARGET_LINKER_FILE:TerraLibrary>
+      #TerraLibrary
+      $<TARGET_OBJECTS:TerraObjectFiles>
       ${LUAJIT_LINK_LIBRARIES}
-      ${ALL_LLVM_LIBRARIES}
+      ${ALL_LLVM_OBJECTS}
       ${LLVM_SYSTEM_LIBRARIES}
   )
   add_dependencies(TerraExecutable TerraLibrary)
