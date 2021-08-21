@@ -778,7 +778,8 @@ end
 function compilationunit:addvalue(k,v)
     if type(k) ~= "string" then k,v = nil,k end
     v:checkreadytocompile()
-    return terra.compilationunitaddvalue(self,k,v)
+--	print('cu.addvalue:key='..tostring(k),':',v)
+    return terra.compilationunitaddvalue(self,k,v)  -- call into tcompile.cpp
 end
 function compilationunit:jitvalue(v)
     local gv = self:addvalue(v)

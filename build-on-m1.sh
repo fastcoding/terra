@@ -1,8 +1,11 @@
 #!/bin/sh
-if [ -f build ]; then 
-  build_dir=_b
+# generator="-G Xcode"
+if [ -z "$generator" ]; then 
+   bld_type=Release
+   build_dir=build
 else
-  build_dir=build
+   bld_type=Debug
+   build_dir=build-xcode
 fi
 llvm_dir=/opt/homebrew/opt/llvm
 mkdir -p $build_dir
@@ -12,12 +15,13 @@ if [ "$1" = "xcode" ]; then
 fi
 export PKG_CONFIG_PATH=/opt/lib/pkgconfig LLVM_DIR=$llvm_dir
 if cmake $gopt -B$build_dir \
+$generator \
 -DTERRA_LUA=system \
--DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_BUILD_TYPE=$bld_type \
 -DCMAKE_INSTALL_PREFIX=/opt \
 -DCMAKE_PREFIX_PATH=/opt:$llvm_dir\
 $@ . ; then 
-   if [ -z "$gopt" ]; then 
-cmake --build $build_dir --config Release --target install 
+  if [ -z "$generator" ]; then 
+       cmake --build $build_dir --config Release --target install 
    fi
 fi

@@ -383,9 +383,7 @@ static void InitializeJIT(TerraCompilationUnit *CU) {
             .setMAttrs(mattrs)
             .setEngineKind(EngineKind::JIT)
             .setTargetOptions(CU->TT->tm->Options)
-#if LLVM_VERSION < 50
-            .setOptLevel(CodeGenOpt::Aggressive);
-#else
+#if LLVM_VERSION >= 50
             .setOptLevel(CodeGenOpt::Aggressive)
 #if LLVM_VERSION <= 90
             .setMCJITMemoryManager(make_unique<TerraSectionMemoryManager>(CU))
@@ -395,8 +393,8 @@ static void InitializeJIT(TerraCompilationUnit *CU) {
 #if LLVM_VERSION < 120
             .setUseOrcMCJITReplacement(true)
 #endif
-            ;
 #endif
+		    ;
 
     CU->ee = eb.create();
     if (!CU->ee) terra_reporterror(CU->T, "llvm: %s\n", err.c_str());
@@ -1162,8 +1160,18 @@ struct CCallingConv {
         // emit call
         // function pointers are stored as &int8 to avoid calling convension issues
         // cast it back to the real pointer type right before calling it
-        callee = B->CreateBitCast(callee, Ptr(info.fntype));
-        CallInst *call = B->CreateCall(info.fntype, callee, arguments);
+        FunctionType *pFntype;
+        Classification infoVarg;
+	    if (!info.fntype->isVarArg()){
+        	callee = B->CreateBitCast(callee, Ptr(info.fntype));
+            pFntype=info.fntype;
+        }else{
+            Obj params;
+            ftype->obj("parameters", &params);
+            Classify(ftype, &params, &infoVarg);
+            pFntype=infoVarg.fntype;
+        }
+        CallInst *call = B->CreateCall(pFntype, callee, arguments);
         // annotate call with byval and sret
         AttributeFnOrCall(call, &info);
 
@@ -2022,8 +2030,11 @@ struct FunctionEmitter {
                 } else {
                     // functions are represented with &int8 pointers to avoid
                     // calling convension issues, so cast the literal to this type now
-                    return B->CreateBitCast(EmitFunction(CU, &global, fstate),
-                                            typeOfValue(exp)->type);
+                    Function *fp=EmitFunction(CU, &global, fstate);
+                    if (fp->isVarArg()){
+                        return fp;
+                    }
+                    return B->CreateBitCast(fp,typeOfValue(exp)->type);
                 }
             } break;
             case T_allocvar: {

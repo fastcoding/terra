@@ -112,6 +112,7 @@ target_include_directories(TerraObjectFiles
     ${PROJECT_BINARY_DIR}/include/terra
     ${LLVM_INCLUDE_DIRS}
     ${CLANG_INCLUDE_DIRS}
+	${LUAJIT_INCLUDE_DIR}
 )
 
 if(WIN32)
@@ -292,6 +293,7 @@ target_include_directories(TerraExecutable
   PRIVATE
     ${PROJECT_BINARY_DIR}
     ${PROJECT_BINARY_DIR}/include/terra
+	${LUAJIT_INCLUDE_DIR}
 )
 
 if(WIN32)
