@@ -1,3 +1,4 @@
+C=terralib.includecstring[[ #include <stdio.h> ]]
 struct A {
 	a : int;
 	b : int;

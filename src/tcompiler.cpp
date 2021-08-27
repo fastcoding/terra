@@ -383,8 +383,8 @@ static void InitializeJIT(TerraCompilationUnit *CU) {
             .setMAttrs(mattrs)
             .setEngineKind(EngineKind::JIT)
             .setTargetOptions(CU->TT->tm->Options)
-#if LLVM_VERSION >= 50
             .setOptLevel(CodeGenOpt::Aggressive)
+#if LLVM_VERSION >= 50
 #if LLVM_VERSION <= 90
             .setMCJITMemoryManager(make_unique<TerraSectionMemoryManager>(CU))
 #else

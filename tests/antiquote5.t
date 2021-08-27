@@ -1,5 +1,4 @@
 
-
 function makeloop(N,body)
 	return quote
 		for i = 0, N do
@@ -16,6 +15,5 @@ terra stuff()
 	end)]
 	return a
 end
-
 
 print(stuff())
