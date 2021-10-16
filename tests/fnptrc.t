@@ -11,7 +11,7 @@ C = terralib.includecstring [[
 terra add1(a : int) return a + 1 end
 
 terra what0()
-	return C.runptr(add1,1)
+	return C.runptr(&add1,1)
 end
 
 assert(what0() == 2)

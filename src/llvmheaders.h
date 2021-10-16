@@ -64,6 +64,8 @@
 #include "llvmheaders_110.h"
 #elif LLVM_VERSION == 120
 #include "llvmheaders_120.h"
+#elif LLVM_VERSION == 130
+#include "llvmheaders_130.h"
 #else
 #pragma(warn "unsupported LLVM version:")
 //#undef LLVM_VERSION
