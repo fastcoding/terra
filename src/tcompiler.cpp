@@ -1122,8 +1122,8 @@ struct CCallingConv {
 
     Value *EmitCall(IRBuilder<> *B, Obj *ftype, Obj *paramtypes, Value *callee,
                     std::vector<Value *> *actuals) {
-        Classification info;
-        Classify(ftype, paramtypes, &info);
+        Classification info; //of the ftype containing params to be actually called
+        Classify(ftype, paramtypes, &info); 
 
         std::vector<Value *> arguments;
 
@@ -1166,10 +1166,13 @@ struct CCallingConv {
         	callee = B->CreateBitCast(callee, Ptr(info.fntype));
             pFntype=info.fntype;
         }else{
+			//vararg call 
             Obj params;
             ftype->obj("parameters", &params);
             Classify(ftype, &params, &infoVarg);
+			//the actuall call type
             pFntype=infoVarg.fntype;
+			callee = B->CreateBitCast(callee, Ptr(pFntype));
         }
         CallInst *call = B->CreateCall(pFntype, callee, arguments);
         // annotate call with byval and sret

@@ -22,7 +22,7 @@ add_custom_command(
     "${PROJECT_SOURCE_DIR}/lib/std.t"
     "${PROJECT_SOURCE_DIR}/lib/parsing.t"
     LuaJIT
-  COMMAND ${LUAJIT_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/geninternalizedfiles.lua" ${PROJECT_BINARY_DIR}/internalizedfiles.h ${CLANG_RESOURCE_DIR} "%.h$" ${CLANG_RESOURCE_DIR} "%.modulemap$" "${PROJECT_SOURCE_DIR}/lib" "%.t$"
+	COMMAND env LUA_PATH=${LUAJIT_SHARE_DIR}/?.lua ${LUAJIT_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/geninternalizedfiles.lua" ${PROJECT_BINARY_DIR}/internalizedfiles.h ${CLANG_RESOURCE_DIR} "%.h$" ${CLANG_RESOURCE_DIR} "%.modulemap$" "${PROJECT_SOURCE_DIR}/lib" "%.t$"
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   VERBATIM
 )
@@ -341,8 +341,9 @@ elseif(UNIX)
       -Wl,--whole-archive
       TerraLibrary
       -Wl,--no-whole-archive
+	  TerraLibrary
+	  ${CLANG_CPP_LIB}
       ${LUAJIT_LIBRARIES}
-      ${ALL_LLVM_LIBRARIES}
       ${LLVM_SYSTEM_LIBRARIES}
   )
 else()

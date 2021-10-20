@@ -1,4 +1,4 @@
-terralib.includepath = terralib.includepath .. ";" .. terralib.terrahome .. "/include/terra"
+terralib.includepath = terralib.includepath .. ";" .. terralib.terrahome .. "/include/terra;"..terralib.terrahome ..'/include/luajit-2.1'
 C = terralib.includecstring [[
     #include "lua.h"
     #include "lauxlib.h"

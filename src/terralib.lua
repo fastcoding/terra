@@ -1403,6 +1403,7 @@ do
                     end
                     local ntyp = uniquecname("function")
                     local cdef = "typedef "..rt.." (*"..ntyp..")"..pa..";"
+					print('cached cstring:',cdef)
                     ffi.cdef(cdef)
                     self.cachedcstring = ntyp
                 end
@@ -1429,7 +1430,16 @@ do
                 local value = self.type:cstring()
                 if not self.cachedcstring then
                     local nm = uniquecname(value.."_arr")
-                    ffi.cdef("typedef "..value.." "..nm.."["..tostring(self.N).."];")
+					--local cdef="typedef "..value.." "..nm.."["..tostring(self.N).."];"
+					local cdef="typedef struct { "..value.." items["..tostring(self.N).."];} "..nm..";"
+					print('arr def:',cdef)
+                    ffi.cdef(cdef)
+					ffi.metatype(nm,{__index=function(self,key)
+						return self.items[key]
+				    end,
+					__newindex=function(self,key,val)
+						self.items[key]=val
+					end})
                     self.cachedcstring = nm
                 end
             elseif self:isvector() then

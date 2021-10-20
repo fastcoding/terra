@@ -14,6 +14,15 @@ description = {
 
 build = {
    type = "command",
+   variables = {
+     LUAJIT_PREFIX="${libdir%/lib}",
+     CXX="clang++",
+     TERRA_LUA='luajit',
+     CC="clang",
+     LLVM_CONFIG="llvm-config",
+	 CMAKE_INSTALL_PREFIX="${PREFIX}"
+   }
+--[=[
    build_command = [[
 make clean
 libdir=$(LUA_LIBDIR)
@@ -23,4 +32,5 @@ make LUAJIT_PREFIX=$LUAJIT_PREFIX CXX=clang++ CC=clang LLVM_CONFIG=$(LUA_BINDIR)
    install_command = [[
 make PREFIX=$(PREFIX) install
    ]],
+   --]=]
 }

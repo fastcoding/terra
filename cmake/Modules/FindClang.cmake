@@ -13,12 +13,17 @@ if(NOT LLVM_INCLUDE_DIRS OR NOT LLVM_LIBRARY_DIRS)
 else()
 
 macro(FIND_AND_ADD_CLANG_LIB _libname_)
-  find_library(CLANG_${_libname_}_LIB ${_libname_} ${LLVM_LIBRARY_DIRS} ${CLANG_LIBRARY_DIRS})
+		find_library(CLANG_${_libname_}_LIB ${_libname_} PATHS ${LLVM_LIBRARY_DIRS} ${CLANG_LIBRARY_DIRS})
   if(CLANG_${_libname_}_LIB)
     list(APPEND CLANG_LIBRARIES ${CLANG_${_libname_}_LIB})
   endif()
 endmacro()
 
+IF (UNIX AND NOT APPLE)
+find_library(CLANG_CPP_LIB clang-cpp PATHS ${LLVM_LIBRARY_DIRS} ${CLANG_LIBRARY_DIRS})
+ENDIF()
+
+if (NOT CLANG_CPP_LIB)
 # Clang shared library provides just the limited C interface, so it
 # can not be used.  We look for the static libraries.
 FIND_AND_ADD_CLANG_LIB(clangFrontend)
@@ -35,7 +40,7 @@ if(LLVM_VERSION_MAJOR GREATER 7)
 endif()
 FIND_AND_ADD_CLANG_LIB(clangLex)
 FIND_AND_ADD_CLANG_LIB(clangBasic)
-
+ENDIF()
 find_path(CLANG_INCLUDE_DIRS clang/Basic/Version.h HINTS ${LLVM_INCLUDE_DIRS})
 
 find_program(CLANG_EXECUTABLE
